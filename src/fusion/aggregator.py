@@ -18,6 +18,7 @@ session_state = {
     "posture_score": 0,
     "posture_trend": "stable",
     "posture_history": [],
+    "stress_history": [],
 
     "blink_rate": 0.0,
     "blink_count": 0,
@@ -174,6 +175,13 @@ def check_alerts():
         })
 
     combined = calculate_combined_score()
+    session_state["stress_history"].append({
+        "score": combined,
+        "timestamp": now
+    })
+    if len(session_state["stress_history"]) > 500:
+        session_state["stress_history"] = session_state["stress_history"][-500:]
+
     if combined > COMBINED_THRESHOLD:
         alerts.append({
             "type": "combined",
@@ -217,6 +225,7 @@ def reset_session():
         "posture_score":   0,
         "posture_trend":   "stable",
         "posture_history": [],
+        "stress_history":  [],
         "blink_rate":      0.0,
         "blink_count":     0,
         "dominant_emotion": "neutral",

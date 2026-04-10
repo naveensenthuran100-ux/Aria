@@ -41,6 +41,41 @@ def posture_timeline_chart(posture_history: list, output_path: str):
     return output_path
 
 
+def stress_timeline_chart(stress_history: list, output_path: str):
+    """Line chart of cognitive stress index over session time."""
+    if not stress_history:
+        return None
+
+    _ensure_dir(output_path)
+
+    t0 = stress_history[0]["timestamp"]
+    mins = [(h["timestamp"] - t0) / 60.0 for h in stress_history]
+    scores = [h["score"] for h in stress_history]
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    
+    # Shade background to indicate severity (0-1.0 scale)
+    ax.axhspan(0.75, 1.0, color="#e74c3c", alpha=0.1)
+    ax.axhspan(0.35, 0.75, color="#f39c12", alpha=0.1)
+    ax.axhspan(0.0, 0.35, color="#2ecc71", alpha=0.1)
+
+    ax.plot(mins, scores, color="#34495e", linewidth=2, label="Stress Index")
+    ax.axhline(y=0.75, color="#e74c3c", linestyle="--", alpha=0.5, linewidth=1.5, label="High Stress")
+    
+    ax.set_xlabel("Time (minutes)")
+    ax.set_ylabel("Stress Index (0-1)")
+    ax.set_title("Cognitive Stress Timeline")
+    ax.set_ylim(0, 1.05)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=120, bbox_inches="tight")
+    plt.close("all")
+    return output_path
+
+
+
 def emotion_pie_chart(emotion_counts: dict, output_path: str):
     """Pie chart of emotion distribution across the session."""
     filtered = {k: v for k, v in emotion_counts.items() if v > 0}

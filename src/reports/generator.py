@@ -27,7 +27,7 @@ def generate_pdf_report(
         SimpleDocTemplate, Paragraph, Spacer, Image,
         Table, TableStyle, HRFlowable
     )
-    from src.reports.charts import posture_timeline_chart, emotion_pie_chart, blink_rate_chart
+    from src.reports.charts import posture_timeline_chart, emotion_pie_chart, blink_rate_chart, stress_timeline_chart
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(CHARTS_DIR, exist_ok=True)
@@ -49,6 +49,10 @@ def generate_pdf_report(
         baseline=float(session_summary.get("baseline_blink", config["user"]["baseline_blink"])),
         threshold=float(config["alerts"]["blink_rate_low"]),
         output_path=os.path.join(CHARTS_DIR, f"blink_{ts}.png")
+    )
+    stress_chart = stress_timeline_chart(
+        session_summary.get("stress_history", []),
+        os.path.join(CHARTS_DIR, f"stress_{ts}.png")
     )
 
     doc = SimpleDocTemplate(
@@ -122,6 +126,12 @@ def generate_pdf_report(
     if blink_chart and os.path.exists(blink_chart):
         story.append(Paragraph("Blink Rate Analysis", section_style))
         story.append(Image(blink_chart, width=4 * inch, height=2.8 * inch))
+        story.append(Spacer(1, 0.15 * inch))
+
+    # Stress timeline
+    if stress_chart and os.path.exists(stress_chart):
+        story.append(Paragraph("Cognitive Stress Analysis", section_style))
+        story.append(Image(stress_chart, width=6.5 * inch, height=2.6 * inch))
         story.append(Spacer(1, 0.15 * inch))
 
     # Emotion pie

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env.example
+
+# Models & Large Assets
+*.onnx
+*.weights
+*.h5
+*.tflite
+data/profiles/
+reports/output/
+backend.log
+frontend.log
+
+# Node & Next.js
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+*.local
+
+# DO NOT IGNORE .env as per user request for sharing
+#!.env

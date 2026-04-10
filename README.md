@@ -1,135 +1,90 @@
-# Aria Wellness Monitor
+# Aria: AI-Powered Wellness Companion 🧘‍♂️✨
 
-Real-time AI wellness monitoring system built with Streamlit, WebRTC, computer vision, and audio analysis.
-
-Aria uses live webcam, microphone, and activity-derived inputs to monitor posture, blink behavior, emotion-related facial cues, typing activity, and voice-based stress signals. These signals are fused into wellness-oriented feedback, alerts, charts, and reports through an interactive dashboard.
+**Aria** is a real-time AI wellness monitoring system designed to enhance your physical and mental health during work. By leveraging computer vision, audio analysis, and multimodal signal fusion, Aria detects patterns associated with fatigue, stress, and poor posture, offering interactive tools and detailed wellness reports.
 
 ---
 
-## Overview
+## ✨ Key Features
 
-Aria Wellness Monitor is a proof-of-concept system designed for lightweight, non-clinical wellness monitoring during laptop use. The project combines multimodal sensing and modular analysis pipelines to detect patterns associated with fatigue, stress, poor posture, and extended unhealthy work behavior.
-
-The codebase is organized by function, with separate modules for:
-
-- vision
-- audio
-- alerts
-- AI assistant logic
-- data/session storage
-- signal fusion
-- reporting
-- interaction monitoring
+*   **Posture Monitoring**: Real-time scoring and trend analysis to prevent slouching.
+*   **Blink Detection**: Monitors eye fatigue risk using live facial landmarks.
+*   **Emotion Tracking**: AI-driven facial sentiment analysis to gauge stress and mood.
+*   **Stress Relief Tools**: Interactive grounding exercises and a guided box-breathing counter.
+*   **Physical Resets**: Minimalist guided routines for shoulder and neck mobility.
+*   **Smart Reports**: AI-generated PDF summaries of your wellness trends with visual charts.
 
 ---
 
-## Core Features
+## 🏗 System Architecture
 
-- Real-time posture detection
-- Blink monitoring using eye landmarks
-- Emotion / facial-state inference
-- Voice stress analysis
-- Voice identity matching
-- Typing activity monitoring
-- Multi-signal wellness aggregation
-- Rule-based alerting
-- Session tracking and storage
-- Charts and report generation
-- Streamlit dashboard with WebRTC live input
+Aria is built using a modern, decoupled architecture:
+
+*   **Backend (Python/FastAPI)**: High-performance ML serving layer handling real-time Computer Vision (MediaPipe/OpenCV), Audio Processing (Librosa), and AI Summarization (Groq Llama 3.3).
+*   **Frontend (Next.js/React)**: A premium, minimalist dashboard designed with Inter typography, Framer Motion animations, and real-time WebSocket connectivity.
+*   **AI Engine**: Powered by Groq for lightning-fast wellness insights and personalized feedback.
 
 ---
 
-## Tech Stack
+## 🚀 Quick Start
 
-### Application Layer
-- Streamlit
-- streamlit-webrtc
+### 1. Prerequisites
+- **Python 3.10+**
+- **Node.js 18+**
+- **Groq API Key** (Required for AI features)
 
-### Computer Vision
-- OpenCV
-- MediaPipe FaceMesh
-- YOLOv8 Pose
-- DeepFace
-
-### Audio / Speech
-- librosa
-- SpeechRecognition
-- Resemblyzer
-
-### Data / Backend
-- Python
-- SQLAlchemy
-- YAML
-
-### Reporting / Visualization
-- matplotlib
-- reportlab
-
-### Deployment
-- Docker
-- Hugging Face Spaces
-
----
-
-## Repository Structure
+### 2. Installation
+Clone the repository and install all dependencies:
 
 ```bash
-aria_wellness_monitor/
-├── .streamlit/
-│   └── config.toml                  # Streamlit theme and UI settings
-│
-├── src/
-│   ├── __init__.py
-│   │
-│   ├── ai/
-│   │   ├── __init__.py
-│   │   ├── chatbot.py               # Chatbot / AI assistant logic
-│   │   └── prompts.py               # Prompt templates and assistant instructions
-│   │
-│   ├── alerts/
-│   │   ├── __init__.py
-│   │   └── notifier.py              # Alert triggering and notification logic
-│   │
-│   ├── audio/
-│   │   ├── __init__.py
-│   │   ├── stress.py                # Audio stress-related feature logic
-│   │   ├── voice_id.py              # Speaker / voice identity processing
-│   │   └── voice_stress.py          # Voice-based stress analysis
-│   │
-│   ├── data/
-│   │   ├── __init__.py
-│   │   └── session_db.py            # Session storage and database access
-│   │
-│   ├── fusion/
-│   │   ├── __init__.py
-│   │   └── aggregator.py            # Combines signals from different modules
-│   │
-│   ├── io/
-│   │   ├── __init__.py
-│   │   └── typing_monitor.py        # Typing activity and keyboard behavior tracking
-│   │
-│   ├── reports/
-│   │   ├── __init__.py
-│   │   ├── charts.py                # Chart generation
-│   │   └── generator.py             # Report generation logic
-│   │
-│   ├── vision/
-│   │   ├── __init__.py
-│   │   ├── blink.py                 # Blink detection
-│   │   ├── emotion.py               # Emotion / facial-state analysis
-│   │   ├── face_id.py               # Face identity handling
-│   │   └── posture.py               # Posture detection and scoring
-│   │
-│   └── webrtc_bridge.py             # WebRTC stream integration layer
-│
-├── tests/
-│   ├── test_blink.py                # Tests for blink analysis
-│   ├── test_emotion.py              # Tests for emotion analysis
-│   └── test_posture.py              # Tests for posture analysis
-│
-├── config.yaml                      # Runtime thresholds, model paths, app settings
-├── main.py                          # Main Streamlit application entry point
-├── train_posture_model.py           # Training script for posture model
-├── requirements.txt                 # Python dependencies
-├── Dockerfile                       # Container setup for deployment
-└── README.md                        # Project documentation
+# Clone the repo
+git clone https://github.com/your-username/Aria.git
+cd Aria
+
+# 1. Setup Backend
+python -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
+pip install -r requirements.txt
+
+# 2. Setup Frontend
+cd frontend
+npm install
+```
+
+### 3. Running the App
+You will need two terminal windows:
+
+**Terminal 1: Backend Server**
+```bash
+python -m uvicorn backend.server:app --port 8000
+```
+
+**Terminal 2: Frontend Dashboard**
+```bash
+cd frontend
+npm run dev
+```
+
+Visit **http://localhost:3000** to start your session!
+
+---
+
+## 🔒 Configuration & Environment
+
+Make sure your `.env` file at the root contains your API key:
+```env
+GROQ_API_KEY=your_key_here
+```
+
+Thresholds for alerts and posture scores can be tuned in `config.yaml`.
+
+---
+
+## 📂 Project Structure
+
+*   `backend/`: FastAPI server logic and model endpoints.
+*   `frontend/`: Next.js application, UI components, and styles.
+*   `src/`: Core Python modules for Signal Fusion, Vision, and Audio analysis.
+*   `public/`: Shared assets including guided physical routine images.
+
+---
+*Created with ❤️ for a healthier work-life balance.*
