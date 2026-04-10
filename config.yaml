@@ -1,0 +1,22 @@
+user:
+  name: "User"
+  baseline_blink: 15
+  usual_duration: 60
+
+alerts:
+  sitting_duration_mins: 45
+  blink_rate_low: 10
+  blink_rate_window_mins: 5
+  posture_score_low: 50
+  posture_window_mins: 10
+  stress_dominant_mins: 15
+  combined_score_threshold: 0.65
+  cooldown_mins: 15
+
+models:
+  yolo_weights: "models/yolov8s-pose.pt"
+  device: "cpu"
+
+report:
+  output_dir: "reports/output"
+  charts_dir: "reports/charts"
