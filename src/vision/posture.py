@@ -76,6 +76,7 @@ def _rule(kp_data, fw, fh):
         details["head_fwd_penalty"] = round(penalty, 1)
 
     # 3. Shoulder slope / asymmetry
+    details["shoulder_slope_raw"] = round(shoulder_slope, 3)
     if shoulder_slope > 0.03:
         penalty = min(15.0, (shoulder_slope - 0.03) * 180)
         score -= penalty

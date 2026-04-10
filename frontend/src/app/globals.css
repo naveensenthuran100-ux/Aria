@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-start: #F7F4EE; /* brand cream */
+    --bg-end: #F7F4EE; /* solid cream */
+    
+    --glass-bg: rgba(255, 255, 255, 0.75);
+    --glass-border: rgba(255, 255, 255, 1);
+    --glass-shadow: 0 4px 24px rgba(45, 36, 32, 0.05);
+    
+    --text-primary: #1C1C1E;
+    --text-secondary: #4B5563;
+    --text-muted: #9CA3AF;
+    
+    --brand-green: #2D5A27;
+    --brand-green-light: #A8C89A;
+    --accent: var(--brand-green);
+    --accent-hover: #1E3F1A;
+    
+    --success: #2D5A27;
+    --warning: #C1935A;
+    --danger: #B05A5A;
+
+    --sidebar-expanded: 220px;
+    --sidebar-collapsed: 64px;
+  }
+
+  body {
+    color: var(--text-primary);
+    background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-end) 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    font-family: var(--font-inter), sans-serif;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+}
