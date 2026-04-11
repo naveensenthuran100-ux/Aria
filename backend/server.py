@@ -126,7 +126,6 @@ async def websocket_endpoint(websocket: WebSocket):
     
     # Internal timer simulation
     last_posture = 0.0
-    last_blink = 0.0
     last_emotion = 0.0
 
     try:
@@ -155,11 +154,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 metrics["keypoints"] = posture_res.get("keypoints", [])
                 last_posture = now
 
-            if now - last_blink > 0.5:
-                blink_res = capture_blink(frame)
-                update_blink(blink_res)
-                metrics["blink_rate"] = blink_res.get("blink_rate", 0.0)
-                last_blink = now
+            # Run blink on every frame — blinks are 150-400ms, need high sample rate
+            blink_res = capture_blink(frame)
+            update_blink(blink_res)
+            metrics["blink_rate"] = blink_res.get("blink_rate", 0.0)
 
             if now - last_emotion > 1.5:
                 # Need face crop logic or just pass whole frame

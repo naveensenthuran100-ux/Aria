@@ -9,11 +9,31 @@ import logging
 logger = logging.getLogger(__name__)
 
 # --- Constants ---
-BUFFER_SIZE    = 8      # rolling window for stable output
+BUFFER_SIZE    = 10     # rolling window for stable output
 MIN_FACE_PX    = 48     # minimum face detection size
 MIN_CONFIDENCE = 0.20   # minimum probability threshold (0-1 scale)
 FACE_INPUT_SIZE = 260   # enet_b2 uses 260×260
 PROFILES_DIR   = "data/profiles"
+
+# Per-emotion minimum confidence — rare/noisy emotions need higher bar
+_EMOTION_MIN_CONF = {
+    "happy": 0.25,
+    "neutral": 0.20,
+    "sad": 0.38,
+    "angry": 0.35,
+    "fear": 0.45,
+    "disgust": 0.45,
+    "surprise": 0.38,
+}
+
+# Inertia: current emotion gets this bonus in weighted voting so it takes
+# a clearly stronger signal to switch. Prevents rapid flickering.
+_INERTIA_BONUS = 1.4    # 40% bonus weight for current emotion
+
+# Minimum hold time: once an emotion is set, keep it for at least this many
+# seconds before allowing a switch (even if weighted vote changes)
+_MIN_HOLD_SECS = 2.0
+_last_switch_time = 0.0
 
 # --- HSEmotion (enet_b2_8 — larger, more accurate, trained on AffectNet) ---
 _hse_model = None
@@ -289,14 +309,38 @@ def _stale_return(status="no_face"):
 
 
 def _weighted_smooth():
+    """Recency-weighted smoothing with inertia for the current emotion."""
     if not _emotion_buffer:
         return "neutral", 0.0
+
+    current = emotion_state["current_emotion"]
+    n = len(_emotion_buffer)
     weighted = collections.defaultdict(float)
-    for emo, conf in zip(_emotion_buffer, _confidence_buffer):
-        weighted[emo] += conf
+    total_weight = 0.0
+    count_per_emo = collections.defaultdict(float)
+
+    emos = list(_emotion_buffer)
+    confs = list(_confidence_buffer)
+
+    for i, (emo, conf) in enumerate(zip(emos, confs)):
+        # Recency weight: newer entries count more (linear ramp)
+        recency = (i + 1) / n  # 0.1 for oldest → 1.0 for newest
+        w = recency * conf
+        weighted[emo] += w
+        count_per_emo[emo] += recency
+        total_weight += w
+
+    # Inertia: give the current emotion a bonus so it's "sticky"
+    if current in weighted:
+        weighted[current] *= _INERTIA_BONUS
+
     best = max(weighted, key=weighted.get)
-    avg_conf = weighted[best] / max(1, list(_emotion_buffer).count(best))
-    return best, avg_conf
+    avg_conf = weighted[best] / (count_per_emo[best] + 1e-9)
+    # Undo inertia inflation on confidence
+    if best == current:
+        avg_conf /= _INERTIA_BONUS
+
+    return best, min(1.0, avg_conf)
 
 
 def get_current_reading(frame=None, face_crop=None):
@@ -317,10 +361,17 @@ def get_current_reading(frame=None, face_crop=None):
         if face_crop is None:
             return _stale_return("no_face")
 
-        # 2. Resize for enet_b2 (260×260)
+        # 2. Preprocess face — normalize lighting for better accuracy
+        face_lab = cv2.cvtColor(face_crop, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(face_lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+        l = clahe.apply(l)
+        face_crop = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+
+        # 3. Resize for enet_b2 (260×260)
         face_resized = cv2.resize(face_crop, (FACE_INPUT_SIZE, FACE_INPUT_SIZE))
 
-        # 3. HSEmotion prediction (single model, no ensemble)
+        # 4. HSEmotion prediction (single model, no ensemble)
         dominant, confidence, all_probs = _hse_predict(face_resized)
 
         if dominant is None:
@@ -330,12 +381,20 @@ def get_current_reading(frame=None, face_crop=None):
         if confidence < MIN_CONFIDENCE:
             return _stale_return("low_confidence")
 
-        # 5. Suppress noisy emotions — disgust/fear need higher confidence
-        if dominant in ("disgust", "fear") and confidence < 0.35:
+        # 5. Per-emotion confidence gating — noisy emotions need higher confidence
+        emo_min = _EMOTION_MIN_CONF.get(dominant, 0.35)
+        if confidence < emo_min:
+            # Fall back to the highest-confidence emotion that passes its own gate
             sorted_emos = sorted(all_probs.items(), key=lambda x: x[1], reverse=True)
-            if len(sorted_emos) > 1:
-                dominant = sorted_emos[1][0]
-                confidence = sorted_emos[1][1]
+            found = False
+            for emo, conf in sorted_emos:
+                if conf >= _EMOTION_MIN_CONF.get(emo, 0.35):
+                    dominant = emo
+                    confidence = conf
+                    found = True
+                    break
+            if not found:
+                return _stale_return("low_confidence")
 
         # 6. Apply personal calibration bias correction
         dominant, confidence = _apply_calibration(dominant, confidence, all_probs)
@@ -343,12 +402,22 @@ def get_current_reading(frame=None, face_crop=None):
         # 7. Update calibration stats (before smoothing, so we track raw predictions)
         _update_calibration(dominant, confidence)
 
-        # 8. Rolling buffer smoothing
+        # 9. Rolling buffer smoothing
         _emotion_buffer.append(dominant)
         _confidence_buffer.append(confidence)
         smoothed, avg_conf = _weighted_smooth()
 
-        # 9. Update session state
+        # 10. Minimum hold time — prevent rapid switching
+        global _last_switch_time
+        now = time.time()
+        current = emotion_state["current_emotion"]
+        if smoothed != current:
+            if (now - _last_switch_time) < _MIN_HOLD_SECS:
+                smoothed = current  # too soon to switch
+            else:
+                _last_switch_time = now
+
+        # 11. Update session state
         emotion_state["current_emotion"] = smoothed
         emotion_state["emotion_confidence"] = round(avg_conf * 100, 1)  # store as 0-100
         emotion_state["emotion_counts"][smoothed] = (
@@ -381,9 +450,10 @@ def get_current_reading(frame=None, face_crop=None):
 
 
 def reset_session():
-    global emotion_state
+    global emotion_state, _last_switch_time
     _emotion_buffer.clear()
     _confidence_buffer.clear()
+    _last_switch_time = 0.0
     emotion_state = {
         "current_emotion":    "neutral",
         "dominant_emotion":   "neutral",

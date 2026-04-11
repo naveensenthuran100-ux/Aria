@@ -42,17 +42,17 @@ export default function MonitoringPage() {
       };
       wsRef.current = ws;
 
-      // 3. Sender Loop (1 FPS to avoid overloading local CPU)
+      // 3. Sender Loop (4 FPS for reliable blink detection)
       const interval = setInterval(() => {
         if (videoRef.current && canvasRef.current && ws.readyState === WebSocket.OPEN) {
           const ctx = canvasRef.current.getContext('2d');
           if (ctx) {
-            ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-            const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.5);
+            ctx.drawImage(videoRef.current, 0, 0, 480, 360);
+            const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.6);
             ws.send(dataUrl);
           }
         }
-      }, 1000);
+      }, 250);
 
       return () => {
         clearInterval(interval);
@@ -80,9 +80,9 @@ export default function MonitoringPage() {
       metrics.keypoints.forEach((kp: any) => {
         const conf = kp[2];
         if (conf > 0.5) {
-          // Normalize YOLO pixel coordinates based on sent frame size (320x240)
-          const normX = kp[0] / 320.0;
-          const normY = kp[1] / 240.0;
+          // Normalize YOLO pixel coordinates based on sent frame size (480x360)
+          const normX = kp[0] / 480.0;
+          const normY = kp[1] / 360.0;
 
           // Flip X because video is mirrored on frontend
           const x = (1.0 - normX) * cvs.width;
@@ -154,7 +154,7 @@ export default function MonitoringPage() {
                    muted 
                    className="w-full h-full object-cover transform -scale-x-100" 
                  />
-                 <canvas ref={canvasRef} width={320} height={240} className="hidden" />
+                 <canvas ref={canvasRef} width={480} height={360} className="hidden" />
                  
                  {/* Skeletal Overlay Canvas */}
                  <canvas ref={overlayRef} className="absolute top-0 left-0 w-full h-full pointer-events-none" />
