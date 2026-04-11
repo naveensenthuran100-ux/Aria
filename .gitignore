@@ -25,5 +25,4 @@ build/
 .DS_Store
 *.local
 
-# DO NOT IGNORE .env as per user request for sharing
-#!.env
+.env
