@@ -7,6 +7,12 @@ _smoothed_score = None   # EMA state
 _baseline = None         # personal baseline (calibrated from first N good frames)
 _baseline_samples = []
 
+# Persistent person tracking — lock onto one person across frames
+_tracked_bbox = None     # (x1, y1, x2, y2) of tracked person's bounding box
+_track_lost_count = 0    # frames since tracked person was last seen
+_TRACK_LOST_MAX = 8      # max frames to keep tracking before re-acquiring
+_IOU_THRESHOLD = 0.2     # minimum IoU to consider same person
+
 with open("config.yaml", "r") as _f:
     _config = yaml.safe_load(_f)
 _DEVICE = _config.get("models", {}).get("device", "cpu")
@@ -239,6 +245,116 @@ def _update_baseline(kp_data, fw, fh):
         logger.info(f"[posture] Baseline calibrated: {_baseline}")
 
 
+def _bbox_from_keypoints(kp_single, w, h):
+    """Compute bounding box (x1, y1, x2, y2) from a single person's keypoints."""
+    visible = [(kp_single[i][0], kp_single[i][1]) for i in range(len(kp_single)) if kp_single[i][2] > 0.3]
+    if not visible:
+        return None
+    xs = [p[0] for p in visible]
+    ys = [p[1] for p in visible]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _iou(box1, box2):
+    """Compute intersection-over-union of two (x1, y1, x2, y2) boxes."""
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    union = area1 + area2 - inter
+    return inter / (union + 1e-9)
+
+
+def _bbox_area(box):
+    """Area of (x1, y1, x2, y2) box."""
+    return max(0, box[2] - box[0]) * max(0, box[3] - box[1])
+
+
+def _select_person(all_kp, w, h):
+    """
+    Select which detected person to track, using persistent bbox IoU tracking.
+    Locks onto the largest person (closest to camera) and tracks them across frames.
+    Only re-acquires when the tracked person is lost for several frames.
+    """
+    global _tracked_bbox, _track_lost_count
+
+    n_people = all_kp.shape[0]
+    if n_people == 0:
+        _track_lost_count += 1
+        if _track_lost_count >= _TRACK_LOST_MAX:
+            _tracked_bbox = None
+        return None
+
+    if n_people == 1:
+        bbox = _bbox_from_keypoints(all_kp[0], w, h)
+        if bbox:
+            _tracked_bbox = bbox
+            _track_lost_count = 0
+        return all_kp[0:1]
+
+    # Multiple people detected — compute bboxes for each
+    bboxes = []
+    for i in range(n_people):
+        bbox = _bbox_from_keypoints(all_kp[i], w, h)
+        bboxes.append(bbox)
+
+    # If we have a tracked person, find best IoU match
+    if _tracked_bbox is not None:
+        best_idx, best_iou = -1, 0.0
+        for i in range(n_people):
+            if bboxes[i] is None:
+                continue
+            iou_val = _iou(_tracked_bbox, bboxes[i])
+            if iou_val > best_iou:
+                best_iou = iou_val
+                best_idx = i
+
+        if best_iou >= _IOU_THRESHOLD:
+            # Smoothly update tracked bbox
+            _tracked_bbox = tuple(
+                0.7 * new + 0.3 * old
+                for new, old in zip(bboxes[best_idx], _tracked_bbox)
+            )
+            _track_lost_count = 0
+            return all_kp[best_idx:best_idx + 1]
+        else:
+            _track_lost_count += 1
+            if _track_lost_count < _TRACK_LOST_MAX:
+                # Keep returning the last-known person's closest match by position
+                # (they may have moved slightly beyond IoU threshold)
+                cx_t = (_tracked_bbox[0] + _tracked_bbox[2]) / 2
+                cy_t = (_tracked_bbox[1] + _tracked_bbox[3]) / 2
+                closest_idx, closest_dist = 0, float('inf')
+                for i in range(n_people):
+                    if bboxes[i] is None:
+                        continue
+                    cx_i = (bboxes[i][0] + bboxes[i][2]) / 2
+                    cy_i = (bboxes[i][1] + bboxes[i][3]) / 2
+                    dist = (cx_i - cx_t) ** 2 + (cy_i - cy_t) ** 2
+                    if dist < closest_dist:
+                        closest_dist = dist
+                        closest_idx = i
+                _tracked_bbox = bboxes[closest_idx]
+                return all_kp[closest_idx:closest_idx + 1]
+
+    # No tracked person or lost too long — acquire the largest person (closest to camera)
+    best_idx, best_area = 0, 0
+    for i in range(n_people):
+        if bboxes[i] is None:
+            continue
+        area = _bbox_area(bboxes[i])
+        if area > best_area:
+            best_area = area
+            best_idx = i
+
+    _tracked_bbox = bboxes[best_idx]
+    _track_lost_count = 0
+    return all_kp[best_idx:best_idx + 1]
+
+
 def get_current_reading(frame=None):
     global _scores, _history, _smoothed_score
     if frame is None:
@@ -252,20 +368,10 @@ def get_current_reading(frame=None):
             return _none()
         all_kp = kps.data.cpu().numpy()
 
-        # Select the person whose nose (kp 0) is closest to frame center
-        if all_kp.shape[0] > 1:
-            cx, cy = w / 2, h / 2
-            best_idx, best_dist = 0, float('inf')
-            for i in range(all_kp.shape[0]):
-                nose = all_kp[i][0]
-                if nose[2] > 0.3:  # nose confidence
-                    dist = (nose[0] - cx) ** 2 + (nose[1] - cy) ** 2
-                    if dist < best_dist:
-                        best_dist = dist
-                        best_idx = i
-            kp = all_kp[best_idx:best_idx+1]
-        else:
-            kp = all_kp
+        # Persistent person tracking — lock onto one person
+        kp = _select_person(all_kp, w, h)
+        if kp is None:
+            return _none()
 
         # Calibrate personal baseline
         _update_baseline(kp, w, h)
@@ -371,8 +477,10 @@ def _annotate(frame, kp_data, score, cat, details=None):
 
 def reset_session():
     global _scores, _history, _smoothed_score, _baseline, _baseline_samples
+    global _tracked_bbox, _track_lost_count
     _scores = []; _history = []; _smoothed_score = None
     _baseline = None; _baseline_samples = []
+    _tracked_bbox = None; _track_lost_count = 0
 
 def get_session_summary():
     if not _scores:
