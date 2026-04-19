@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
 import GlassCard from '@/components/GlassCard';
-import { Camera, CameraOff, BrainCircuit, Activity, MessageSquare, Info } from 'lucide-react';
+import { Camera, CameraOff, BrainCircuit, Activity, MessageSquare, Info, Bell } from 'lucide-react';
 
 export default function MonitoringPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -11,6 +11,7 @@ export default function MonitoringPage() {
 
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [metrics, setMetrics] = useState<any>({});
+  const [currentAlert, setCurrentAlert] = useState<any | null>(null);
   
   // Chat state
   const [messages, setMessages] = useState<{role: string, text: string}[]>([]);
@@ -38,6 +39,10 @@ export default function MonitoringPage() {
         const data = JSON.parse(event.data);
         if (data.status === 'ok' && data.metrics) {
           setMetrics((prev: any) => ({...prev, ...data.metrics}));
+          if (data.metrics.alerts && data.metrics.alerts.length > 0) {
+            setCurrentAlert(data.metrics.alerts[0]);
+            setTimeout(() => setCurrentAlert(null), 8000);
+          }
         }
       };
       wsRef.current = ws;
@@ -244,6 +249,24 @@ export default function MonitoringPage() {
           </GlassCard>
         </div>
       </div>
+
+      {/* Wellness Insight Toast Popup */}
+      {currentAlert && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-right-8 fade-in duration-300">
+          <div className="bg-[#1C1C1E] text-white p-5 rounded-3xl shadow-2xl flex items-start gap-4 max-w-sm border border-white/10 backdrop-blur-xl">
+            <div className="bg-[#B05A5A] p-2.5 rounded-2xl">
+              <Bell size={20} className="text-white" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm">Wellness Alert</h4>
+              <p className="text-sm text-gray-300 mt-1 leading-relaxed">{currentAlert.message}</p>
+            </div>
+            <button onClick={() => setCurrentAlert(null)} className="text-gray-500 hover:text-white transition-colors">
+              <span className="text-xl">&times;</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

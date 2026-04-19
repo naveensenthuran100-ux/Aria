@@ -1,10 +1,11 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import GlassCard from '@/components/GlassCard';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Info, Bell, BellOff } from 'lucide-react';
 import GuidedRoutineModal from '@/components/GuidedRoutineModal';
 import { StressReliefTools } from '@/components/StressReliefTools';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const mockData = [
   { time: '10:00', posture: 85, stress: 20 },
@@ -19,6 +20,28 @@ const mockData = [
 export default function DashboardPage() {
   const [dndActive, setDndActive] = useState(false);
   const [routineId, setRoutineId] = useState<string | null>(null);
+  const [showPostureBreakdown, setShowPostureBreakdown] = useState(false);
+  const [liveMetrics, setLiveMetrics] = useState<any>(null);
+
+  // Poll for latest aggregated stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/sessions');
+        const data = await res.json();
+        if (data && data.length > 0) {
+          setLiveMetrics(data[0]); // Use latest session
+        }
+      } catch (e) {
+        console.error("Dashboard sync error:", e);
+      }
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const postureScore = liveMetrics?.posture_score || 85;
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12 font-sans">
@@ -40,28 +63,100 @@ export default function DashboardPage() {
 
       {/* Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <GlassCard className="p-6">
-          <div className="flex justify-between items-center mb-2 group relative">
-            <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest">Posture Score</div>
-            <Info size={14} className="text-[#9CA3AF] hover:text-[#1C1C1E] cursor-help" />
+        <GlassCard 
+          className={`p-6 transition-all duration-300 cursor-pointer hover:shadow-lg ${showPostureBreakdown ? 'bg-white/80 ring-1 ring-[var(--accent)]/20' : ''}`}
+          onClick={() => setShowPostureBreakdown(!showPostureBreakdown)}
+        >
+          <div className="flex justify-between items-center mb-1">
+            <div className="flex items-center gap-2">
+              <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest">Posture Score</div>
+              {liveMetrics?.is_live && (
+                <span className="flex items-center gap-1 text-[8px] px-1.5 py-0.5 bg-[#2D5A27] text-white rounded-full font-bold animate-pulse">
+                  <div className="w-1 h-1 bg-white rounded-full"></div> LIVE
+                </span>
+              )}
+            </div>
+            <div className="relative group/tip">
+              <Info size={14} className="text-[#9CA3AF] hover:text-[#1C1C1E] cursor-help transition-colors" />
+              <div className="pointer-events-none absolute right-0 bottom-full mb-3 opacity-0 group-hover/tip:opacity-100 transition-all duration-200 transform translate-y-2 group-hover/tip:translate-y-0 w-52 p-3 bg-[#1C1C1E] text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl z-[100] font-bold border border-white/10">
+                Overall posture health derived from tracking spine alignment and head position.
+                <div className="absolute top-full right-2 -mt-1 border-4 border-transparent border-t-[#1C1C1E]"></div>
+              </div>
+            </div>
           </div>
-          <div className="text-4xl font-extrabold text-[#1C1C1E]">85<span className="text-lg text-[#9CA3AF] font-bold ml-1">/100</span></div>
-          <div className="mt-2 text-xs text-[#2D5A27] font-bold">↑ 5% from yesterday</div>
+          <div className="text-4xl font-extrabold text-[#1C1C1E] tracking-tight">
+            {postureScore}
+            <span className="text-lg text-[#9CA3AF] font-bold ml-1">/100</span>
+          </div>
+          <div className="mt-2 text-xs text-[#2D5A27] font-bold flex items-center justify-between">
+            <span>↑ 5% from yesterday</span>
+            <span className={`text-[10px] uppercase transition-opacity duration-300 ${showPostureBreakdown ? 'text-[var(--accent)] opacity-100' : 'text-[#9CA3AF] opacity-60'}`}>
+              {showPostureBreakdown ? 'Hide Details' : 'Click to explain'}
+            </span>
+          </div>
+
+          <AnimatePresence>
+            {showPostureBreakdown && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-6 pt-4 border-t border-black/5 space-y-3">
+                  <div className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">Detailed Breakdown</div>
+                  
+                  {Object.entries({
+                    "Neck Alignment": liveMetrics?.posture_details?.hn_penalty || 8.0,
+                    "Forward Head": liveMetrics?.posture_details?.head_fwd_penalty || 5.0,
+                    "Shoulder Tilt": liveMetrics?.posture_details?.slope_penalty || 2.0,
+                    "Upper Back Slouch": liveMetrics?.posture_details?.slouch_penalty || 0.0,
+                    "Lower Back Tension": liveMetrics?.posture_details?.back_penalty || 0.0
+                  }).map(([label, val], i) => (
+                    <div key={i} className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-[#6B7280]">{label}</span>
+                      <span className={val > 5 ? "text-[#B05A5A]" : "text-[#9CA3AF]"}>
+                        {val > 0 ? `-${val}%` : "0%"}
+                      </span>
+                    </div>
+                  ))}
+                  
+                  <div className="mt-2 p-2 bg-[#2D5A27]/5 rounded-lg text-[10px] text-[#2D5A27] font-bold leading-tight">
+                    {postureScore > 80 
+                      ? "Great work! Your spinal alignment is stable. Keep this core tension." 
+                      : "We noticed some slouching. Try rolling your shoulders back and lifting your chin."}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </GlassCard>
         
         <GlassCard className="p-6">
-          <div className="flex justify-between items-center mb-2 group relative">
+          <div className="flex justify-between items-center mb-2">
             <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest">Stress Index</div>
-            <Info size={14} className="text-[#9CA3AF] hover:text-[#1C1C1E] cursor-help" />
+            <div className="relative group/tip">
+              <Info size={14} className="text-[#9CA3AF] hover:text-[#1C1C1E] cursor-help transition-colors" />
+              <div className="pointer-events-none absolute right-0 bottom-full mb-2 opacity-0 group-hover/tip:opacity-100 transition-opacity w-48 p-3 bg-[#1C1C1E] text-white text-[11px] leading-relaxed rounded-xl shadow-xl z-20 font-bold">
+                Calculated by observing blink rates and facial strain relative to your baseline.
+                <div className="absolute top-full right-1 -mt-1 border-4 border-transparent border-t-[#1C1C1E]"></div>
+              </div>
+            </div>
           </div>
           <div className="text-4xl font-extrabold text-[#1C1C1E]">Low</div>
           <div className="mt-2 text-xs text-[#9CA3AF] font-bold uppercase tracking-wider">Stable levels</div>
         </GlassCard>
 
         <GlassCard className="p-6">
-          <div className="flex justify-between items-center mb-2 group relative">
+          <div className="flex justify-between items-center mb-2">
             <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest">Time Seated</div>
-            <Info size={14} className="text-[#9CA3AF] hover:text-[#1C1C1E] cursor-help" />
+            <div className="relative group/tip">
+              <Info size={14} className="text-[#9CA3AF] hover:text-[#1C1C1E] cursor-help transition-colors" />
+              <div className="pointer-events-none absolute right-0 bottom-full mb-2 opacity-0 group-hover/tip:opacity-100 transition-opacity w-48 p-3 bg-[#1C1C1E] text-white text-[11px] leading-relaxed rounded-xl shadow-xl z-20 font-bold">
+                Continuous minutes seated. We recommend a standing break every 60 minutes.
+                <div className="absolute top-full right-1 -mt-1 border-4 border-transparent border-t-[#1C1C1E]"></div>
+              </div>
+            </div>
           </div>
           <div className="text-4xl font-extrabold text-[#1C1C1E]">45<span className="text-lg text-[#9CA3AF] font-bold ml-1">m</span></div>
           <div className="mt-2 text-xs text-[#B05A5A] font-bold uppercase tracking-wider">Consider a stretch</div>

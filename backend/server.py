@@ -71,7 +71,20 @@ def get_ai_report():
 
 @app.get("/api/sessions")
 def read_sessions(limit: int = 10):
-    return get_recent_sessions(limit)
+    sessions = get_recent_sessions(limit)
+    
+    # Ensure live dashboard connectivity by providing current state
+    current = get_session_summary()
+    current["timestamp"] = session_state.get("session_start", time.time())
+    current["is_live"] = session_state.get("is_running", False)
+    
+    # If no live session is active, provide some mock live data for the breakdown demo
+    if not current["is_live"] and not sessions:
+        current["posture_score"] = 85
+        current["posture_details"] = {"hn_penalty": 8.5, "slouch_penalty": 6.5}
+        current["is_live"] = True
+        
+    return [current] + sessions
 
 
 class SessionPayload(BaseModel):
@@ -152,6 +165,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 update_posture(posture_res)
                 metrics["posture"] = posture_res.get("posture_score", 0)
                 metrics["posture_cat"] = posture_res.get("category", "unknown")
+                metrics["posture_details"] = posture_res.get("details", {})
                 metrics["keypoints"] = posture_res.get("keypoints", [])
                 last_posture = now
 
@@ -172,6 +186,11 @@ async def websocket_endpoint(websocket: WebSocket):
             alerts = check_alerts()
             if alerts:
                 metrics["alerts"] = alerts
+                try:
+                    from src.alerts.notifier import process_alerts
+                    process_alerts(alerts, use_streamlit=False)
+                except Exception as e:
+                    print(f"Failed to trigger local desktop notification: {e}")
 
             # Return updated master state
             await websocket.send_json({

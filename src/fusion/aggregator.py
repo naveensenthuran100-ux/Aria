@@ -17,6 +17,7 @@ session_state = {
     # Signal readings
     "posture_score": 0,
     "posture_trend": "stable",
+    "posture_details": {},
     "posture_history": [],
     "stress_history": [],
 
@@ -61,6 +62,7 @@ def update_posture(reading: dict):
         return
     prev = session_state["posture_score"]
     session_state["posture_score"] = curr
+    session_state["posture_details"] = reading.get("details", {})
     session_state["posture_history"].append({
         "score": curr,
         "timestamp": time.time()
@@ -203,7 +205,8 @@ def get_session_summary():
         "baseline_blink":   session_state["baseline_blink"],
         "usual_duration":   session_state["usual_duration"],
         "window":           session_state["window_mins"],
-        "posture_score":    session_state["posture_score"],
+        "posture_score":    session_state.get("posture_score", 0),
+        "posture_details":  session_state.get("posture_details", {}),
         "posture_trend":    session_state["posture_trend"],
         "blink_rate":       session_state["blink_rate"],
         "dominant_emotion": session_state["dominant_emotion"],
